@@ -3,7 +3,14 @@ import { useNavigate } from 'react-router-dom'
 import Layout from '../../components/Layout.jsx'
 import { BACKOFFICE_NAV_LINKS } from './navLinks.js'
 import { clearBackofficeSession, backofficeFetch } from './api.js'
+import { ASSET_TYPES } from '../../../shared/assetTypes.js'
 import './AddCostPage.css'
+
+// Libellé lisible du type GLPI (ex. "Computer" → "Ordinateurs") — repris de la
+// même source que les menus et le dashboard (shared/assetTypes.js).
+function itemTypeLabel(itemtype) {
+  return ASSET_TYPES.find(t => t.itemtype === itemtype)?.label ?? itemtype
+}
 
 function BackofficeAddCostPage({ onLock }) {
   const navigate = useNavigate()
@@ -32,6 +39,7 @@ function BackofficeAddCostPage({ onLock }) {
   const [costs,        setCosts]        = useState(null)
   const [costsError,   setCostsError]   = useState(false)
   const [costsLoading, setCostsLoading] = useState(true)
+  const [itemtypeFilter, setItemtypeFilter] = useState('')
 
   const loadCosts = useCallback(async () => {
     setCostsLoading(true)
@@ -98,6 +106,32 @@ function BackofficeAddCostPage({ onLock }) {
   }
 
   const canSubmit = ticketId && name.trim() && !submitting
+
+  // Types présents dans la liste — alimentent le filtre (dynamique : pas limité
+  // à ASSET_TYPES, au cas où un ticket serait lié à un autre type d'élément).
+  const itemtypesPresent = costs ? [...new Set(costs.map(c => c.itemtype))] : []
+  const filteredCosts = costs?.filter(c => !itemtypeFilter || c.itemtype === itemtypeFilter)
+
+  // Totaux par type d'élément (calculés sur TOUS les coûts, pas seulement
+  // ceux affichés par le filtre) — importé/nouveau/total, dans l'ordre de
+  // itemtypesPresent.
+  const totalsByType = itemtypesPresent.map(itemtype => {
+    const rows = costs.filter(c => c.itemtype === itemtype)
+    const imported = rows.reduce((sum, c) => sum + c.costImported, 0)
+    const fresh    = rows.reduce((sum, c) => sum + c.costNew, 0)
+    return { itemtype, imported, fresh, total: imported + fresh }
+  })
+
+  // Total général (toutes catégories confondues) — affiché uniquement quand
+  // le filtre est sur "Tous les types".
+  const grandTotal = totalsByType.reduce(
+    (acc, t) => ({
+      imported: acc.imported + t.imported,
+      fresh:    acc.fresh + t.fresh,
+      total:    acc.total + t.total
+    }),
+    { imported: 0, fresh: 0, total: 0 }
+  )
 
   return (
     <Layout
@@ -202,7 +236,21 @@ function BackofficeAddCostPage({ onLock }) {
       )}
 
       <section className="add-cost-page__list">
-        <h2>Coûts enregistrés</h2>
+        <div className="add-cost-page__list-header">
+          <h2>Coûts enregistrés</h2>
+
+          {itemtypesPresent.length > 0 && (
+            <label className="add-cost-page__filter">
+              Filtrer par type d'élément
+              <select value={itemtypeFilter} onChange={e => setItemtypeFilter(e.target.value)}>
+                <option value="">Tous les types</option>
+                {itemtypesPresent.map(itemtype => (
+                  <option key={itemtype} value={itemtype}>{itemTypeLabel(itemtype)}</option>
+                ))}
+              </select>
+            </label>
+          )}
+        </div>
 
         {costsLoading && <p>Chargement des coûts…</p>}
         {costsError && (
@@ -213,30 +261,69 @@ function BackofficeAddCostPage({ onLock }) {
         {!costsLoading && !costsError && costs?.length === 0 && (
           <p className="add-cost-page__empty">Aucun coût enregistré pour le moment.</p>
         )}
-        {!costsLoading && !costsError && costs?.length > 0 && (
+        {!costsLoading && !costsError && costs?.length > 0 && filteredCosts.length === 0 && (
+          <p className="add-cost-page__empty">Aucun coût pour ce type d'élément.</p>
+        )}
+        {!costsLoading && !costsError && filteredCosts?.length > 0 && (
           <div className="add-cost-page__results">
             <table className="add-cost-page__table">
               <thead>
                 <tr>
                   <th>Ticket</th>
-                  <th>Nom</th>
-                  <th>Temps (s)</th>
-                  <th>Coût horaire</th>
-                  <th>Coût fixe</th>
+                  <th>Élément</th>
+                  <th>Type</th>
+                  <th>Coût importé (Ar)</th>
+                  <th>Nouveau coût fixe (Ar)</th>
                 </tr>
               </thead>
               <tbody>
-                {costs.map(cost => (
-                  <tr key={cost.id}>
+                {filteredCosts.map((cost, index) => (
+                  <tr key={index}>
                     <td>#{cost.ticketId} — {cost.ticketName}</td>
-                    <td>{cost.name}</td>
-                    <td>{cost.actiontime}</td>
-                    <td>{cost.cost_time}</td>
-                    <td>{cost.cost_fixed}</td>
+                    <td>{cost.assetName}</td>
+                    <td>{itemTypeLabel(cost.itemtype)}</td>
+                    <td>{cost.costImported.toFixed(2)}</td>
+                    <td>{cost.costNew.toFixed(2)}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
+          </div>
+        )}
+
+        {!costsLoading && !costsError && totalsByType.length > 0 && (
+          <div className="add-cost-page__totals">
+            <h3>Totaux par type d'élément</h3>
+            <div className="add-cost-page__results">
+              <table className="add-cost-page__table">
+                <thead>
+                  <tr>
+                    <th>Type</th>
+                    <th>Coût importé (Ar)</th>
+                    <th>Nouveau coût (Ar)</th>
+                    <th>Total (Ar)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {totalsByType.map(t => (
+                    <tr key={t.itemtype}>
+                      <td>{itemTypeLabel(t.itemtype)}</td>
+                      <td>{t.imported.toFixed(2)}</td>
+                      <td>{t.fresh.toFixed(2)}</td>
+                      <td>{t.total.toFixed(2)}</td>
+                    </tr>
+                  ))}
+                  {!itemtypeFilter && (
+                    <tr className="add-cost-page__totals-grand">
+                      <td>Total général</td>
+                      <td>{grandTotal.imported.toFixed(2)}</td>
+                      <td>{grandTotal.fresh.toFixed(2)}</td>
+                      <td>{grandTotal.total.toFixed(2)}</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
         )}
       </section>

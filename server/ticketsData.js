@@ -83,31 +83,90 @@ export async function listTickets() {
   }
 }
 
-// ── Liste de tous les coûts (toutes tickets confondus) ─────────────────────────
-// Pour la page "Ajouter un coût" : un seul appel global TicketCost (voir
-// dashboardData.js — un appel par ticket serait beaucoup trop lent), plus un
-// appel Ticket pour résoudre "tickets_id" en nom de ticket lisible.
-export async function listTicketCosts() {
+// ── Liste des coûts PAR ÉLÉMENT ASSOCIÉ ────────────────────────────────────────
+// Pour la page "Ajouter un coût" : une ligne par (ticket, élément associé) —
+// avec son type d'élément (pour le filtre), le coût fixe importé (TicketCost
+// GLPI) et le "nouveau coût fixe" saisi lors de la clôture via le Kanban
+// (table SQLite ticket_costs, voir db.js).
+//
+// Si un ticket est lié à PLUSIEURS éléments, son coût (importé ET nouveau) est
+// réparti à parts égales entre eux (ex. 1000 Ar / 2 éléments → 500 Ar chacun) —
+// indispensable pour que les totaux par type (et le total général) ne comptent
+// pas deux fois le même coût de ticket.
+//
+// Tous les appels GLPI sont globaux (un seul appel par itemtype, pas un appel
+// par ticket/élément) — même principe que listTicketsForKanban/dashboardData :
+// avec ~0.5s par appel GLPI, un appel par ticket rendrait la page inutilisable.
+export async function listCostsByAsset() {
   const sessionToken = await glpi.openSession()
   try {
-    const [costs, tickets] = await Promise.all([
-      glpi.listItems(sessionToken, 'TicketCost'),
-      glpi.listItems(sessionToken, 'Ticket')
+    const [tickets, itemTickets, ticketCosts] = await Promise.all([
+      glpi.listItems(sessionToken, 'Ticket'),
+      glpi.listItems(sessionToken, 'Item_Ticket'),
+      glpi.listItems(sessionToken, 'TicketCost')
     ])
+
+    // Associations regroupées par ticket : { tickets_id → [{itemtype, id}, ...] }
+    const itemsByTicket = new Map()
+    for (const link of itemTickets) {
+      const list = itemsByTicket.get(link.tickets_id) ?? []
+      list.push({ itemtype: link.itemtype, id: link.items_id })
+      itemsByTicket.set(link.tickets_id, list)
+    }
+
+    // Noms des éléments associés : un appel global PAR TYPE rencontré (pas un
+    // appel par élément) — même principe que listElements().
+    const distinctTypes = [...new Set(itemTickets.map(link => link.itemtype))]
+    const itemListsByType = await Promise.all(
+      distinctTypes.map(itemtype => glpi.listItems(sessionToken, itemtype))
+    )
+    const nameByTypeAndId = new Map(
+      distinctTypes.map((itemtype, i) => [itemtype, new Map(itemListsByType[i].map(it => [it.id, it.name]))])
+    )
+
+    // Coût importé : pour chaque TicketCost (GLPI), cost_time est un TARIF
+    // HORAIRE (pas un montant) — le coût lié au temps passé est donc
+    // cost_time × actiontime(secondes) / 3600, auquel s'ajoute cost_fixed.
+    // Somme par ticket (un ticket peut avoir plusieurs lignes TicketCost).
+    const importedCostByTicket = new Map()
+    for (const cost of ticketCosts) {
+      const amount = Number(cost.cost_time ?? 0) * Number(cost.actiontime ?? 0) / 3600 + Number(cost.cost_fixed ?? 0)
+      importedCostByTicket.set(
+        cost.tickets_id,
+        (importedCostByTicket.get(cost.tickets_id) ?? 0) + amount
+      )
+    }
+
+    // Nouveau coût : même logique que les coûts importés — pour chaque ligne
+    // ticket_costs (SQLite), cost_time × actiontime/3600 + cost_fixed, sommé
+    // par ticket.
+    const newCostByTicket = new Map()
+    for (const row of db.prepare('SELECT ticket_id, actiontime, cost_time, cost_fixed FROM ticket_costs').all()) {
+      const amount = Number(row.cost_time ?? 0) * Number(row.actiontime ?? 0) / 3600 + Number(row.cost_fixed ?? 0)
+      newCostByTicket.set(row.ticket_id, (newCostByTicket.get(row.ticket_id) ?? 0) + amount)
+    }
+
     const ticketNameById = new Map(tickets.map(t => [t.id, t.name]))
 
-    return costs
-      .slice()
-      .sort((a, b) => b.id - a.id)   // plus récent (id le plus grand) en premier
-      .map(c => ({
-        id:         c.id,
-        ticketId:   c.tickets_id,
-        ticketName: ticketNameById.get(c.tickets_id) ?? `Ticket #${c.tickets_id}`,
-        name:       c.name,
-        actiontime: c.actiontime,
-        cost_time:  c.cost_time,
-        cost_fixed: c.cost_fixed
-      }))
+    const rows = []
+    for (const [ticketId, items] of itemsByTicket) {
+      const costImportedPerItem = (importedCostByTicket.get(ticketId) ?? 0) / items.length
+      const costNewPerItem      = (newCostByTicket.get(ticketId) ?? 0) / items.length
+
+      for (const item of items) {
+        rows.push({
+          ticketId,
+          ticketName:   ticketNameById.get(ticketId) ?? `Ticket #${ticketId}`,
+          itemtype:     item.itemtype,
+          assetId:      item.id,
+          assetName:    nameByTypeAndId.get(item.itemtype)?.get(item.id) ?? `#${item.id}`,
+          costImported: costImportedPerItem,
+          costNew:      costNewPerItem
+        })
+      }
+    }
+
+    return rows.sort((a, b) => b.ticketId - a.ticketId)
   } finally {
     await glpi.closeSession(sessionToken)
   }

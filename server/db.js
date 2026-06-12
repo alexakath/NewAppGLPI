@@ -95,4 +95,31 @@ for (const [key, value] of KANBAN_DEFAULTS) {
   insertDefault.run(key, value)
 }
 
+// "Nouveaux" coûts fixes saisis par l'agent FrontOffice à la clôture d'un ticket
+// (modale du Kanban) — distincts des coûts importés (TicketCost côté GLPI).
+// "actiontime" (secondes) et "cost_time" (tarif horaire) suivent la même
+// logique que l'import (Feuille 3) : le coût "temps passé" se calcule en
+// cost_time × actiontime / 3600, comme pour les TicketCost GLPI.
+db.exec(`
+  CREATE TABLE IF NOT EXISTS ticket_costs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ticket_id INTEGER NOT NULL,
+    actiontime INTEGER NOT NULL DEFAULT 0,
+    cost_time REAL NOT NULL DEFAULT 0,
+    cost_fixed REAL NOT NULL,
+    created_at TEXT DEFAULT(datetime('now'))
+  )
+`)
+
+// Migration : la table existait déjà sans actiontime/cost_time avant l'ajout
+// de cette logique — on les ajoute si absentes (les lignes déjà enregistrées
+// gardent leur valeur par défaut 0, donc leur coût "temps passé" reste nul).
+const ticketCostsColumns = db.prepare("PRAGMA table_info(ticket_costs)").all().map(c => c.name)
+if (!ticketCostsColumns.includes('actiontime')) {
+  db.exec('ALTER TABLE ticket_costs ADD COLUMN actiontime INTEGER NOT NULL DEFAULT 0')
+}
+if (!ticketCostsColumns.includes('cost_time')) {
+  db.exec('ALTER TABLE ticket_costs ADD COLUMN cost_time REAL NOT NULL DEFAULT 0')
+}
+
 export default db

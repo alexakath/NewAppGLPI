@@ -7,7 +7,7 @@ import multer  from 'multer'
 import db      from './db.js'
 import { runImport, resetImportedData } from './importPipeline.js'
 import { getDashboardStats } from './dashboardData.js'
-import { listTickets, getTicketDetail, listTicketsForKanban, listTicketCosts, updateTicket, deleteTicket } from './ticketsData.js'
+import { listTickets, getTicketDetail, listTicketsForKanban, listCostsByAsset, updateTicket, deleteTicket } from './ticketsData.js'
 import { listElements, getElementDetail, getElementImage } from './elementsData.js'
 import { getKanbanSettings, updateKanbanSettings, getKanbanHistory } from './kanbanSettings.js'
 import { createTicketWithItems, addTicketCost } from './ticketCreation.js'
@@ -230,7 +230,7 @@ app.delete('/api/backoffice/tickets/:id', requireBackofficeCode, async (req, res
 // ── Backoffice : liste de tous les coûts (toutes tickets confondus) ───────────
 app.get('/api/backoffice/costs', async (req, res) => {
   try {
-    const costs = await listTicketCosts()
+    const costs = await listCostsByAsset()
     res.json({ ok: true, costs })
   } catch (err) {
     const glpiError = err.response?.data ?? err.message
@@ -423,7 +423,7 @@ app.use('/api/glpi', async (req, res) => {
 // Body : { status: 1|2|6, solution?: "..." }  (solution requis quand status === 6)
 app.patch('/api/frontoffice/kanban-tickets/:id/status', async (req, res) => {
   const ticketId = req.params.id
-  const { status, solution } = req.body
+  const { status, solution, cost, actiontime, costTime } = req.body
 
   if (!status) return res.status(400).json({ ok: false, error: 'status requis' })
 
@@ -438,6 +438,20 @@ app.patch('/api/frontoffice/kanban-tickets/:id/status', async (req, res) => {
         content:  solution || '(résolu)'
       })
       await glpiV1.updateItem(sessionToken, 'Ticket', ticketId, { status: 6 })
+
+      // "Nouveau coût" saisi dans la modale de clôture — stocké à part (table
+      // ticket_costs, voir db.js), car ce n'est PAS un TicketCost GLPI : il est
+      // divisé entre les éléments associés au ticket (voir listCostsByAsset).
+      // Même logique que les coûts importés : actiontime (secondes) et cost_time
+      // (tarif horaire) donnent un coût "temps passé" = cost_time × actiontime/3600,
+      // additionné au coût fixe.
+      const costFixed     = parseFloat(cost) || 0
+      const costTimeRate  = parseFloat(costTime) || 0
+      const actiontimeSec = parseInt(actiontime, 10) || 0
+      if (costFixed > 0 || costTimeRate > 0 || actiontimeSec > 0) {
+        db.prepare('INSERT INTO ticket_costs (ticket_id, actiontime, cost_time, cost_fixed) VALUES (?, ?, ?, ?)')
+          .run(Number(ticketId), actiontimeSec, costTimeRate, costFixed)
+      }
     } else {
       // Changement simple de statut (ex. Nouveau ↔ In progress)
       await glpiV1.updateItem(sessionToken, 'Ticket', ticketId, { status })
