@@ -127,8 +127,41 @@
   margin-top: 2rem;
 }
 
-.add-cost-page__list h2 {
+.add-cost-page__list-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 1rem;
   margin-bottom: 1rem;
+}
+
+.add-cost-page__list-header h2 {
+  margin: 0;
+}
+
+.add-cost-page__filter {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--text);
+  font-size: 0.9rem;
+  font-weight: 500;
+}
+
+.add-cost-page__filter select {
+  padding: 0.4rem 0.6rem;
+  font-family: inherit;
+  font-size: 0.9rem;
+  color: var(--text-h);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  outline: none;
+}
+
+.add-cost-page__filter select:focus {
+  border-color: var(--accent);
 }
 
 .add-cost-page__results {
@@ -169,5 +202,20 @@
 }
 
 .add-cost-page__table tbody tr:hover {
+  background: var(--surface-2);
+}
+
+.add-cost-page__totals {
+  margin-top: 1.5rem;
+}
+
+.add-cost-page__totals h3 {
+  margin: 0 0 0.75rem;
+  font-size: 1rem;
+}
+
+.add-cost-page__totals-grand td {
+  font-weight: 600;
+  color: var(--text-h);
   background: var(--surface-2);
 }

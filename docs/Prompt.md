@@ -155,3 +155,10 @@ NEWAPPGLPI/
 ├── package.json
 ├── README.md
 └── vite.config.js
+
+terminé de manokatra boite de dialogue : ao anatiny asina coût fixe vaovao (atao anaty SQLite)
+manambotra page vaovao misy resaka coût: liste items(assets), coût import, coût vaovao(coût avy any @ nouveau coût fixe-kanban):
+- coût par types d'éléments filtre
+- raha associé @ éléments 2 ohatra ny tickets 1 de mizara 2 ny coût any na avy @ import na coût vaovao, de raha associé @ éléments 3 de mizara 3
+
+Get-ChildItem C:\Users\"Alex Rakotobe" -Recurse -File | Where-Object { $_LastWriteTime -gt (Get-Date).AddMinutes(-30) } | Sort-Object LastWriteTime -Descending | Select-Object Name, LastWriteTime, FullName

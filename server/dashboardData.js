@@ -10,7 +10,7 @@
 
 import * as glpi from './glpiV1Client.js'
 import { ASSET_TYPES } from '../shared/assetTypes.js'
-import { TICKET_STATUSES } from './ticketsData.js'
+import { TICKET_STATUSES, listCostsByAsset } from './ticketsData.js'
 
 // Codes numériques du champ "type" d'un Ticket dans GLPI (vérifiés par un test
 // réel : voir docs internes — Ticket::INCIDENT_TYPE = 1, Ticket::DEMAND_TYPE = 2).
@@ -35,9 +35,10 @@ export async function getDashboardStats() {
     // "allCosts" est récupéré EN MÊME TEMPS (Promise.all) : chaque appel GLPI a un
     // coût fixe d'environ 0.5s (bootstrap PHP), donc paralléliser les deux appels
     // indépendants évite de payer ce coût deux fois de suite.
-    const [tickets, allCosts] = await Promise.all([
+    const [tickets, allCosts, costsByAsset] = await Promise.all([
       glpi.listItems(sessionToken, 'Ticket'),
-      glpi.listItems(sessionToken, 'TicketCost')
+      glpi.listItems(sessionToken, 'TicketCost'),
+      listCostsByAsset()
     ])
 
     const countByType = new Map()
@@ -71,9 +72,13 @@ export async function getDashboardStats() {
     // par appel GLPI, faire un appel par ticket rendrait le Dashboard inutilisable
     // dès que le nombre de tickets devient important (ex. 121 tickets → ~60s).
     const totalCostsCount  = allCosts.length
-    const totalCostAmount  = allCosts.reduce(
-      (sum, c) => sum + Number(c.cost_time ?? 0) + Number(c.cost_fixed ?? 0), 0
-    )
+
+    // Mêmes totaux que la page "Ajouter un coût" (Backoffice) — calculés à
+    // partir des mêmes lignes (listCostsByAsset), pour garantir des chiffres
+    // identiques entre le Dashboard et cette page.
+    const totalCostAmount        = costsByAsset.reduce((sum, c) => sum + c.costImported, 0)
+    const totalNewCostAmount     = costsByAsset.reduce((sum, c) => sum + c.costNew, 0)
+    const totalGeneralCostAmount = totalCostAmount + totalNewCostAmount
 
     return {
       elements,
@@ -82,7 +87,9 @@ export async function getDashboardStats() {
       ticketsByStatus,
       totalTickets: tickets.length,
       totalCostsCount,
-      totalCostAmount
+      totalCostAmount,
+      totalNewCostAmount,
+      totalGeneralCostAmount
     }
   } finally {
     await glpi.closeSession(sessionToken)

@@ -28,12 +28,17 @@ function labelFor(settings, key, lang) {
 }
 
 // ── Modale : saisie de solution (obligatoire pour passer en "Terminé") ────────
+// Le "nouveau coût" suit la même logique que les coûts importés (Feuille 3) :
+// temps passé (secondes) × coût horaire / 3600, plus un coût fixe.
 function SolveModal({ onConfirm, onCancel }) {
   const [text, setText] = useState('')
+  const [actiontime, setActiontime] = useState('')
+  const [costTime, setCostTime] = useState('')
+  const [cost, setCost] = useState('')
 
   function handleSubmit(e) {
     e.preventDefault()
-    if (text.trim()) onConfirm(text.trim())
+    if (text.trim()) onConfirm(text.trim(), { actiontime, costTime, cost })
   }
 
   return (
@@ -53,6 +58,18 @@ function SolveModal({ onConfirm, onCancel }) {
             placeholder="Décrivez la solution apportée…"
             autoFocus
           />
+          <label className="kanban-modal__field">
+            Temps passé (secondes)
+            <input type="number" min="0" step="1" value={actiontime} onChange={e => setActiontime(e.target.value)} placeholder="0"/>
+          </label>
+          <label className="kanban-modal__field">
+            Coût horaire (Ar)
+            <input type="number" min="0" step="0.01" value={costTime} onChange={e => setCostTime(e.target.value)} placeholder="0.00"/>
+          </label>
+          <label className="kanban-modal__field">
+            Nouveau coût fixe (Ar)
+            <input type="number" min="0" step="0.01" value={cost} onChange={e => setCost(e.target.value)} placeholder="0.00"/>
+          </label>
           <div className="kanban-modal__actions">
             <button type="button" onClick={onCancel} className="kanban-modal__btn kanban-modal__btn--cancel">
               Annuler
@@ -249,7 +266,7 @@ function KanbanPage() {
     }
   }
 
-  async function handleSolveConfirm(solutionText) {
+  async function handleSolveConfirm(solutionText, { actiontime, costTime, cost }) {
     const { ticketId } = solveTarget
     setSolveTarget(null)
     setTickets(ts => ts.map(t => t.id === ticketId ? { ...t, status: 6 } : t))
@@ -257,7 +274,7 @@ function KanbanPage() {
       const r = await fetch(`http://localhost:3001/api/frontoffice/kanban-tickets/${ticketId}/status`, {
         method:  'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ status: 6, solution: solutionText })
+        body:    JSON.stringify({ status: 6, solution: solutionText, actiontime, costTime, cost })
       })
       const data = await r.json().catch(() => ({}))
       if (!data.ok) {
