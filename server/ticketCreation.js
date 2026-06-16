@@ -67,3 +67,7 @@ export async function addTicketCost({ ticketId, name, actiontime, cost_time, cos
     await glpiV1.closeSession(sessionToken)
   }
 }
+
+// export async function mvtTicket({ticketId, name, mvt}) {
+
+// }

@@ -172,3 +172,16 @@ boite de dialogue mipotra avec bouton :
 -reouverture: mameno champs ray en pourcentage de refa valider de manome coût en pourcentage(pourcentage par rapport @ le coût) miampy 10% anle superpost
 ajoute dans la liste: colone frais réouverture
 ny superpost ihany no kitihana atao annulation na réouverture
+
+
+manao page vaovao fanaovana impor:
+mouvement nitranga natao t@tanana : csv de 3 colone
+1er: ticket
+2:mouvement
+3:valeur
+ohatra misy oe 2 open 5 ( ticket numéro 2 reouverture de 5 pourcent) 
+ticket 2 cancel(annulation du ticket numéro 2)
+2 close 100 (ticket 2 valeur terminer 100)
+rehefa mikitika ao @ catégorie:
+ohatra laptop (50 ny teminer de mac 40 et dell 10):
+item: contenu du catégorie(elements)

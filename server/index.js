@@ -22,7 +22,13 @@ const PORT = process.env.PORT || 3001
 const VALID_ITEMTYPES = ASSET_TYPES.map(({ itemtype }) => itemtype)
 
 // ── Middlewares globaux ────────────────────────────────────────────────────────
-app.use(cors({ origin: 'http://localhost:5173', credentials: true }))
+app.use(cors({
+  origin: [
+    'http://localhost:5173',
+    'http://localhost:5175'
+  ],
+  credentials: true
+}))
 app.use(express.json())
 
 // ── Health check ───────────────────────────────────────────────────────────────
@@ -258,6 +264,95 @@ app.post('/api/backoffice/costs', requireBackofficeCode, async (req, res) => {
     const glpiError = err.response?.data ?? err.message
     console.error('[costs] Erreur :', JSON.stringify(glpiError, null, 2))
     res.status(500).json({ ok: false, error: glpiError })
+  }
+})
+
+// ── Import de mouvements Kanban (Backoffice) ───────────────────────────────────────────────
+// CSV 3 colonnes : ticket (id), mouvement (open/cancel/close), valeur (% ou Ar).
+// open   → réouverture : statut→2, coût = dernier coût de clôture × (valeur/100)
+// cancel → annulation  : statut→2, supprime le dernier coût de clôture
+// close  → clôture     : ITILSolution + statut→6, coût fixe = valeur Ar
+app.post('/api/backoffice/import-kanban', requireBackofficeCode, upload.single('mouvements'), async (req, res) => {
+  if (!req.file) return res.status(400).json({ ok: false, error: 'Fichier CSV requis' })
+
+  let records
+  try {
+    const { parse } = await import('csv-parse/sync')
+    records = parse(req.file.buffer, { columns: true, skip_empty_lines: true, trim: true, relax_column_count: true })
+  } catch (err) {
+    return res.status(400).json({ ok: false, error: 'CSV invalide : ' + err.message })
+  }
+
+  res.writeHead(200, {
+    'Content-Type':      'text/event-stream',
+    'Cache-Control':     'no-cache',
+    'X-Accel-Buffering': 'no'
+  })
+
+  function emit(data) { res.write(`data: ${JSON.stringify(data)}\n\n`) }
+
+  const log = []
+  try {
+    for (let i = 0; i < records.length; i++) {
+      const row       = records[i]
+      const ticketId  = parseInt(row.ref_ticket ?? row.ticket, 10)
+      const mouvement = (row.mouvement ?? '').trim().toLowerCase()
+      const valeur    = parseFloat((row.valeur ?? '').replace(',', '.')) || 0
+
+      emit({
+        type:    'progress',
+        percent: Math.round((i + 1) / records.length * 100),
+        label:   `Ticket #${ticketId} — ${mouvement}`
+      })
+
+      if (isNaN(ticketId)) { log.push(`Ligne ${i + 2} : numéro de ticket invalide`); continue }
+
+      if (mouvement === 'close') {
+        if (valeur > 0) {
+          db.prepare("INSERT INTO ticket_costs (ticket_id, actiontime, cost_time, cost_fixed, type) VALUES (?, 0, 0, ?, 'cloture')")
+            .run(ticketId, valeur)
+        }
+        log.push(`Ticket #${ticketId} clôturé${valeur > 0 ? ` (coût fixe : ${valeur} Ar)` : ''}`)
+
+      } else if (mouvement === 'open') {
+        if (valeur > 0) {
+          const lastClosing = db.prepare(
+            "SELECT actiontime, cost_time, cost_fixed FROM ticket_costs WHERE ticket_id = ? AND type = 'cloture' ORDER BY id DESC LIMIT 1"
+          ).get(ticketId)
+          if (lastClosing) {
+            const lastAmount   = Number(lastClosing.cost_time) * Number(lastClosing.actiontime) / 3600 + Number(lastClosing.cost_fixed)
+            const reopenAmount = lastAmount * (valeur / 100)
+            if (reopenAmount > 0) {
+              db.prepare("INSERT INTO ticket_costs (ticket_id, actiontime, cost_time, cost_fixed, type) VALUES (?, 0, 0, ?, 'reouverture')")
+                .run(ticketId, reopenAmount)
+              log.push(`Ticket #${ticketId} réouvert (${valeur} % → +${reopenAmount.toFixed(2)} Ar)`)
+            } else {
+              log.push(`Ticket #${ticketId} : clôture précédente à 0 — réouverture ignorée`)
+            }
+          } else {
+            log.push(`Ticket #${ticketId} : aucune clôture préalable trouvée — réouverture ignorée`)
+          }
+        } else {
+          log.push(`Ticket #${ticketId} réouvert (sans calcul de coût)`)
+        }
+
+      } else if (mouvement === 'cancel') {
+        const lastClosing = db.prepare(
+          "SELECT id FROM ticket_costs WHERE ticket_id = ? AND type = 'cloture' ORDER BY id DESC LIMIT 1"
+        ).get(ticketId)
+        if (lastClosing) db.prepare('DELETE FROM ticket_costs WHERE id = ?').run(lastClosing.id)
+        log.push(`Ticket #${ticketId} annulé`)
+
+      } else {
+        log.push(`Ligne ${i + 2} : mouvement inconnu "${mouvement}"`)
+      }
+    }
+    emit({ type: 'done', ok: true, log })
+  } catch (err) {
+    console.error('[import-kanban] Erreur SQLite :', err.message)
+    emit({ type: 'done', ok: false, error: err.message })
+  } finally {
+    res.end()
   }
 })
 

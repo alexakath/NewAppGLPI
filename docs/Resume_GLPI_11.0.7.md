@@ -202,3 +202,6 @@ GLPI expose une API REST centrale, utilisée plus tard par NewApp.
 ## Schéma de liaison avec NewApp
 
 GLPI MySQL -> API PHP JSON -> React-Vite NewApp -> SQLite local
+
+
+

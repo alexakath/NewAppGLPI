@@ -29,6 +29,7 @@ export const BACKOFFICE_NAV_LINKS = [
     links: [
       { to: '/backoffice/kanban-settings', label: 'Paramètres Kanban' },
       { to: '/backoffice/import',          label: 'Importer des données' },
+      { to: '/backoffice/import-kanban',   label: 'Mouvements Kanban' },
       { to: '/backoffice/reset',           label: 'Réinitialiser les données' }
     ]
   },

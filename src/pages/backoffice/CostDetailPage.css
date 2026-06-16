@@ -1,0 +1,77 @@
+.cost-detail-page {
+  font-family: var(--sans);
+  text-align: left;
+}
+
+.cost-detail-page__header {
+  margin-bottom: 1.5rem;
+  padding-bottom: 1.25rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.cost-detail-page__back {
+  display: inline-block;
+  font-size: 0.85rem;
+  color: var(--accent);
+  text-decoration: none;
+  margin-bottom: 0.5rem;
+}
+
+.cost-detail-page__back:hover {
+  text-decoration: underline;
+}
+
+.cost-detail-page__error {
+  background: var(--danger-bg);
+  color: var(--danger);
+  padding: 0.75rem 1rem;
+  border-radius: 8px;
+}
+
+.cost-detail-page__empty {
+  padding: 2rem;
+  text-align: center;
+  color: var(--text-muted);
+  background: var(--surface);
+  border: 1px dashed var(--border);
+  border-radius: 10px;
+}
+
+.cost-detail-page__results {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.cost-detail-page__table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.cost-detail-page__table th {
+  text-align: left;
+  padding: 0.75rem 1rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--border);
+}
+
+.cost-detail-page__table td {
+  padding: 0.75rem 1rem;
+  font-size: 0.9rem;
+  color: var(--text);
+  border-bottom: 1px solid var(--border);
+}
+
+.cost-detail-page__table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.cost-detail-page__table tbody tr:hover {
+  background: var(--surface-2);
+}
