@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, Link } from 'react-router-dom'
 import Layout from '../../components/Layout.jsx'
 import { BACKOFFICE_NAV_LINKS } from './navLinks.js'
 import { clearBackofficeSession, backofficeFetch } from './api.js'
@@ -271,13 +271,12 @@ function BackofficeAddCostPage({ onLock }) {
             <table className="add-cost-page__table">
               <thead>
                 <tr>
-                  <th>Ticket</th>
-                  <th>Élément</th>
+                  <th>Réf. ticket</th>
+                  <th>Item</th>
                   <th>Type</th>
-                  <th>Coût importé (Ar)</th>
-                  <th>Nouveau coût fixe (Ar)</th>
-                  <th>Coût de réouverture (Ar)</th>
-
+                  <th>glpi</th>
+                  <th>réouverture</th>
+                  <th>supercost</th>
                 </tr>
               </thead>
               <tbody>
@@ -287,8 +286,8 @@ function BackofficeAddCostPage({ onLock }) {
                     <td>{cost.assetName}</td>
                     <td>{itemTypeLabel(cost.itemtype)}</td>
                     <td>{cost.costImported.toFixed(2)}</td>
-                    <td>{cost.costNew.toFixed(2)}</td>
                     <td>{(cost.costReopening ?? 0).toFixed(2)}</td>
+                    <td>{cost.costNew.toFixed(2)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -304,19 +303,23 @@ function BackofficeAddCostPage({ onLock }) {
                 <thead>
                   <tr>
                     <th>Type</th>
-                    <th>Coût importé (Ar)</th>
-                    <th>Nouveau coût (Ar)</th>
-                    <th>Nouveau de réouverture (Ar)</th>
-                    <th>Total (Ar)</th>
+                    <th>glpi</th>
+                    <th>réouverture</th>
+                    <th>supercost</th>
+                    <th>Total</th>
                   </tr>
                 </thead>
                 <tbody>
                   {totalsByType.map(t => (
                     <tr key={t.itemtype}>
-                      <td>{itemTypeLabel(t.itemtype)}</td>
+                      <td>
+                        <Link to={`/backoffice/costs/type/${t.itemtype}`}>
+                          {itemTypeLabel(t.itemtype)}
+                        </Link>
+                      </td>
                       <td>{t.imported.toFixed(2)}</td>
-                      <td>{t.fresh.toFixed(2)}</td>
                       <td>{t.reopen.toFixed(2)}</td>
+                      <td>{t.fresh.toFixed(2)}</td>
                       <td>{t.total.toFixed(2)}</td>
                     </tr>
                   ))}
@@ -324,8 +327,8 @@ function BackofficeAddCostPage({ onLock }) {
                     <tr className="add-cost-page__totals-grand">
                       <td>Total général</td>
                       <td>{grandTotal.imported.toFixed(2)}</td>
-                      <td>{grandTotal.fresh.toFixed(2)}</td>
                       <td>{grandTotal.reopen.toFixed(2)}</td>
+                      <td>{grandTotal.fresh.toFixed(2)}</td>
                       <td>{grandTotal.total.toFixed(2)}</td>
                     </tr>
                   )}

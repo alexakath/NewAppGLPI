@@ -19,6 +19,8 @@ import BackofficeElementDetailPage  from './pages/backoffice/ElementDetailPage.j
 import BackofficeKanbanSettingsPage from './pages/backoffice/KanbanSettingsPage.jsx'
 import BackofficeAddCostPage        from './pages/backoffice/AddCostPage.jsx'
 import BackofficeResetPage          from './pages/backoffice/ResetPage.jsx'
+import BackofficeImportKanbanPage   from './pages/backoffice/ImportKanbanPage.jsx'
+import BackofficeCostDetailPage     from './pages/backoffice/CostDetailPage.jsx'
 
 function App() {
   // Même principe qu'avant : un booléen en sessionStorage pour le code backoffice.
@@ -145,6 +147,24 @@ function App() {
         element={
           backofficeUnlocked
             ? <BackofficeResetPage onLock={() => setBackofficeUnlocked(false)} />
+            : <Navigate to="/backoffice/login" replace />
+        }
+      />
+
+      <Route
+        path="/backoffice/costs/type/:itemtype"
+        element={
+          backofficeUnlocked
+            ? <BackofficeCostDetailPage onLock={() => setBackofficeUnlocked(false)} />
+            : <Navigate to="/backoffice/login" replace />
+        }
+      />
+
+      <Route
+        path="/backoffice/import-kanban"
+        element={
+          backofficeUnlocked
+            ? <BackofficeImportKanbanPage onLock={() => setBackofficeUnlocked(false)} />
             : <Navigate to="/backoffice/login" replace />
         }
       />
