@@ -132,4 +132,21 @@ if (!ticketCostsColumns.includes('type')) {
 // WHERE type = 'cloture'. On corrige ces lignes (toutes des coûts de clôture).
 db.exec("UPDATE ticket_costs SET type = 'cloture' WHERE type = 0")
 
+// ── Correspondance Ref_Ticket CSV ↔ ID GLPI ───────────────────────────────────
+// Stocke la vraie référence métier issue du fichier d'import (ex. "1", "2")
+// plutôt que l'ID auto-incrémenté de GLPI, afin de :
+//   1. L'afficher dans l'UI (liste et fiche détail des tickets)
+//   2. Permettre à la Feuille 3 (coûts) de retrouver le bon ticket via
+//      Num_Ticket même si le pipeline est relancé séparément (les IDs GLPI
+//      peuvent changer après une réinitialisation).
+// "ref_ticket" est TEXT pour supporter des références alphanumériques futures.
+// "glpi_ticket_id" est l'ID GLPI retourné à la création (ou trouvé si doublon).
+db.exec(`
+  CREATE TABLE IF NOT EXISTS ticket_ref_map (
+    ref_ticket      TEXT PRIMARY KEY,
+    glpi_ticket_id  INTEGER NOT NULL,
+    created_at      TEXT DEFAULT (datetime('now'))
+  )
+`)
+
 export default db

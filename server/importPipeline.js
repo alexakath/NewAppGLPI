@@ -372,6 +372,9 @@ async function importTickets(ctx, csvText, log) {
       if (ctx.ticketCache.has(row.Titre)) {
         const existingId = ctx.ticketCache.get(row.Titre)
         ctx.ticketsByRef.set(row.Ref_Ticket, existingId)
+        // Persiste même en cas de doublon : garantit que la Feuille 3 trouve ce
+        // ticket via Num_Ticket si elle est importée lors d'une session ultérieure.
+        ctx.upsertTicketRef.run(String(row.Ref_Ticket), existingId)
         log.push(`Ticket "${row.Titre}" déjà existant (id ${existingId}) — création ignorée.`)
         continue
       }
@@ -395,7 +398,11 @@ async function importTickets(ctx, csvText, log) {
       journalize(ctx, 'Ticket', ticketId, row.Titre)
       ctx.ticketCache.set(row.Titre, ticketId)
       ctx.ticketsByRef.set(row.Ref_Ticket, ticketId)
-      log.push(`Ticket "${row.Titre}" créé (id ${ticketId})`)
+      // Persiste la correspondance Ref_Ticket CSV → ID GLPI dans SQLite.
+      // Indispensable pour : (a) affichage de la vraie référence dans l'UI,
+      // (b) import de la Feuille 3 seule lors d'une session ultérieure.
+      ctx.upsertTicketRef.run(String(row.Ref_Ticket), ticketId)
+      log.push(`Ticket "${row.Titre}" créé (id GLPI ${ticketId}, Ref_Ticket ${row.Ref_Ticket})`)
 
       // La colonne "Items" est une chaîne JSON, ex. : ["PC-ADM-001","MN-FORM-002"]
       // → on la décode, puis on relie chaque élément trouvé via Item_Ticket
@@ -462,9 +469,20 @@ async function importTicketCosts(ctx, csvText, log) {
 
   for (const row of rows) {
     try {
-      const ticketId = ctx.ticketsByRef.get(row.Num_Ticket)
+      // Résolution du ticket via Num_Ticket (= Ref_Ticket de la Feuille 2).
+      // Priorité 1 : ctx.ticketsByRef (en mémoire) — disponible quand Feuille 2
+      //   et Feuille 3 sont importées dans la même exécution.
+      // Priorité 2 : ticket_ref_map (SQLite) — indispensable quand la Feuille 3
+      //   est importée seule lors d'une session ultérieure (ctx est vide).
+      let ticketId = ctx.ticketsByRef.get(row.Num_Ticket)
+      if (ticketId === undefined) {
+        const dbRow = db.prepare(
+          'SELECT glpi_ticket_id FROM ticket_ref_map WHERE ref_ticket = ?'
+        ).get(String(row.Num_Ticket))
+        ticketId = dbRow?.glpi_ticket_id
+      }
       if (!ticketId) {
-        log.push(`Coût ignoré : aucun ticket pour la référence "${row.Num_Ticket}"`)
+        log.push(`Coût ignoré : aucun ticket trouvé pour la référence "${row.Num_Ticket}" (ni en mémoire ni dans ticket_ref_map).`)
         continue
       }
 
@@ -557,6 +575,9 @@ export async function resetImportedData({ onProgress } = {}) {
     }
 
     db.prepare('DELETE FROM import_journal').run()
+    // Vide aussi ticket_ref_map : toutes les correspondances Ref_Ticket → ID GLPI
+    // deviennent caduques puisque les tickets ont été supprimés.
+    db.prepare('DELETE FROM ticket_ref_map').run()
     log.push(`Journal vidé (${rows.length} entrées retirées du suivi).`)
 
     return { ok: true, log }
@@ -577,10 +598,14 @@ export async function runImport({ feuille1Csv, feuille2Csv, feuille3Csv, zipBuff
     sessionToken,
     cache:         new Map(),
     assetsByName:  new Map(),
-    ticketsByRef:  new Map(),
+    ticketsByRef:  new Map(),   // Map(ref_ticket_csv → glpi_ticket_id) — en mémoire pour la session en cours
     ticketCache:   undefined,
     costsCache:    new Map(),
-    insertJournal: db.prepare('INSERT INTO import_journal (glpi_itemtype, glpi_id, label) VALUES (?, ?, ?)')
+    insertJournal:   db.prepare('INSERT INTO import_journal (glpi_itemtype, glpi_id, label) VALUES (?, ?, ?)'),
+    // Persistance durable : sauvegarde chaque correspondance Ref_Ticket → ID GLPI
+    // dans SQLite afin que la Feuille 3 puisse retrouver les tickets même lors
+    // d'un import relancé séparément (ctx.ticketsByRef est alors vide).
+    upsertTicketRef: db.prepare('INSERT OR REPLACE INTO ticket_ref_map (ref_ticket, glpi_ticket_id) VALUES (?, ?)')
   }
 
   try {

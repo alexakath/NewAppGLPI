@@ -29,19 +29,31 @@ const TICKET_PRIORITIES = {
   6: 'Majeure'
 }
 
+// Charge toutes les correspondances Ref_Ticket CSV → ID GLPI depuis SQLite.
+// Retourne un Map<glpi_ticket_id (number), ref_ticket (string)>.
+// Appelé une fois par requête (pas de cache global : la table peut être mise à
+// jour entre deux imports).
+function loadRefMap() {
+  const rows = db.prepare('SELECT ref_ticket, glpi_ticket_id FROM ticket_ref_map').all()
+  return new Map(rows.map(r => [r.glpi_ticket_id, r.ref_ticket]))
+}
+
 // "?? code" : si jamais GLPI renvoie un code qu'on n'a pas mappé (peu probable,
 // mais possible avec des tickets créés autrement que par notre import), on
 // affiche le code brut plutôt que de planter ou d'afficher "undefined".
 // "typeId/statusId/priorityId" : codes bruts GLPI, en plus des libellés traduits
 // — utilisés par la fiche détail Backoffice pour préremplir les <select> du
 // formulaire de modification (les valeurs des <option> sont ces codes).
-function describeTicket(ticket) {
+// "refTicket" : vraie référence métier du CSV (ex. "1", "2") issue de ticket_ref_map.
+//   null si le ticket a été créé en dehors d'un import (ex. manuellement dans GLPI).
+function describeTicket(ticket, refMap) {
   return {
     id:         ticket.id,
+    refTicket:  refMap?.get(ticket.id) ?? null,
     name:       ticket.name,
     content:    ticket.content,
-    type:       TICKET_TYPES[ticket.type]         ?? `(type ${ticket.type})`,
-    status:     TICKET_STATUSES[ticket.status]    ?? `(statut ${ticket.status})`,
+    type:       TICKET_TYPES[ticket.type]          ?? `(type ${ticket.type})`,
+    status:     TICKET_STATUSES[ticket.status]     ?? `(statut ${ticket.status})`,
     priority:   TICKET_PRIORITIES[ticket.priority] ?? `(priorité ${ticket.priority})`,
     date:       ticket.date,
     typeId:     ticket.type,
@@ -73,11 +85,12 @@ export async function listTickets() {
   const sessionToken = await glpi.openSession()
   try {
     const tickets = await glpi.listItems(sessionToken, 'Ticket')
+    const refMap  = loadRefMap()
     // Tri du plus récent au plus ancien : ordre naturel pour une liste de suivi.
     return tickets
       .slice()
       .sort((a, b) => (a.date < b.date ? 1 : -1))
-      .map(describeTicket)
+      .map(t => describeTicket(t, refMap))
   } finally {
     await glpi.closeSession(sessionToken)
   }
@@ -209,7 +222,7 @@ export async function getTicketDetail(ticketId) {
     }))
 
     return {
-      ...describeTicket(ticket),
+      ...describeTicket(ticket, loadRefMap()),
       items,
       costs: costs.map(c => ({
         name:       c.name,
@@ -258,6 +271,10 @@ export async function deleteTicket(ticketId) {
     deleteJournalEntry.run('Ticket', Number(ticketId))
     for (const link of itemLinks) deleteJournalEntry.run('Item_Ticket', link.id)
     for (const cost of costs)     deleteJournalEntry.run('TicketCost', cost.id)
+
+    // Retire aussi la correspondance Ref_Ticket de la table ticket_ref_map
+    // pour éviter qu'un futur import ne tombe sur un glpi_ticket_id obsolète.
+    db.prepare('DELETE FROM ticket_ref_map WHERE glpi_ticket_id = ?').run(Number(ticketId))
   } finally {
     await glpi.closeSession(sessionToken)
   }

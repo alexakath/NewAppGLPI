@@ -190,6 +190,9 @@ function BackofficeTicketDetailPage({ onLock }) {
               </div>
             </div>
             <div className="ticket-detail-page__meta">
+              {ticket.refTicket != null && (
+                <p><strong>Réf. :</strong> {ticket.refTicket}</p>
+              )}
               <p><strong>Type :</strong> {ticket.type}</p>
               <p><strong>Statut :</strong> {ticket.status}</p>
               <p><strong>Priorité :</strong> {ticket.priority}</p>

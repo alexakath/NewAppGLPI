@@ -102,6 +102,7 @@ function BackofficeTicketsPage({ onLock }) {
             <table className="backoffice-tickets-page__table">
               <thead>
                 <tr>
+                  <th>Réf.</th>
                   <th>Titre</th>
                   <th>Type</th>
                   <th>Statut</th>
@@ -112,6 +113,9 @@ function BackofficeTicketsPage({ onLock }) {
               <tbody>
                 {tickets.map(ticket => (
                   <tr key={ticket.id}>
+                    <td className="backoffice-tickets-page__ref">
+                      {ticket.refTicket ?? `#${ticket.id}`}
+                    </td>
                     <td>
                       <Link to={`/backoffice/tickets/${ticket.id}`}>{ticket.name}</Link>
                     </td>
